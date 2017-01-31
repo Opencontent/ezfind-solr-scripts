@@ -1,0 +1,190 @@
+#!/bin/bash
+#
+# eZ Find init script for RHEL7 and CENTOS7.
+#
+# fork by Francesco R. Opencontent
+# with the aim of creating a correct init script for Centos 7, suitable to hold many solr init scripts in same server
+#
+# Convention
+#  * Name of script must start with "solr-"
+#  * solr ezfind installed in /home/solr/NAME/java
+#  * NAME: solr-NAME
+#      es. NAME=solr-multicore-8001
+#      es. NAME=solr-singlecore
+
+# Usage:
+#
+# * Customize this script only in section "###### CUSTOMIZE FROM HERE #####" below, i.e.
+#     NAME="solr-mysolr" 
+# * rename this script to the NAME used, i.e.
+#     mv solr-xxx solr-mysolr 
+# * copy this file to /etc/init.d, then run
+#     chkconfig --add solr-mysolr
+# * Install solr ezfind directory in /home/solr/NAME/java, i.e.
+#     mv /home/httpd/www.example.com/html/ezpublish_legacy/extension/ezfind/java /home/solr/mysolr/
+# * customize solr port at both 
+#        ezpublish_legacy/extension/ezfind/settings/solr.ini
+#       /home/solr/NAME/java/etc/jetty.xml
+#
+# * then the usual
+#     service  solr-xxx [status|stop|start|restart]
+#   
+
+# Debug tips
+# 
+# * be sure no locks are left in /var/lock/subsys/solr-*
+# * Run 'systemctl daemon-reload' to reload units in case you change content of one /etc/init.d/solr-xxx script
+# * be sure commented line "# pidfile: /var/run/solr-xxx.pid" is present and has ".pid" at the end
+
+
+###### CUSTOMIZE FROM HERE #####
+
+# Beware CENTOS 7 read the following (systemd)
+
+# chkconfig: 2345 64 36
+# description: SOLR indexing server solr-xxx
+# processname: solr-xxx
+# pidfile: /var/run/solr-xxx.pid
+
+# NAME must start with "solr-"
+NAME="solr-xxx"
+
+###### CUSTOMIZE TO HERE #####
+######
+###### no need to change anything below this line
+
+DESC="Solr indexing server $NAME"
+# remove first 5 chars (solr-) from NAME
+DIR_NAME=${NAME:5}
+SOLR_HOME="/home/solr/$DIR_NAME/java"
+
+JAVA="/home/solr/$DIR_NAME/link_to_java_in_solr_directory"
+if [ ! -x "$JAVA" ]
+then
+        # the following create a symbolic link "/home/solr/$DIR_NAME/link_to_java_in_solr_directory" useful to identify correctly pid in case of several scripts
+        # we then
+        # use below to identify correct pid
+        ln -s /etc/alternatives/java $JAVA
+fi
+
+if [ ! -x "$JAVA" ]
+then
+        echo "Unable to locate java. Please set JAVA_HOME environment variable."
+        exit
+fi
+
+source /etc/rc.d/init.d/functions
+
+
+RETVAL=0
+
+d_start() {
+    CURRENT_DIR=`pwd`
+    cd "$SOLR_HOME"
+    daemon --check "$NAME" --pidfile "/var/run/$NAME.pid" nohup $JAVA -jar start.jar > /dev/null 2>&1 &
+    cd "$CURRENT_DIR"
+    sleep 1 # Sleep 1 second, to make sure java is registered.
+
+    # Using pidof is not good, as there might be other java processes as well.
+    # fix francesco  
+    # with the following we are sure to pick up the correct pid, even if many other solr are already running
+    #
+    pid=`ps ax | grep "$JAVA -jar start.jar" | grep -v nohup |  grep -v grep | awk '{ print $1 }'`
+    if [ -z $pid ]
+    then
+        echo "Error starting $NAME!"
+        return 1
+    fi
+    echo $pid > "/var/run/$NAME.pid"
+    touch "/var/lock/subsys/$NAME"
+    return 0
+}
+
+d_stop() {
+    killproc -p /var/run/$NAME.pid "$NAME" >> /dev/null 2>&1
+    RETVAL=$?
+    [ $RETVAL -eq 0 ] && rm -f "/var/lock/subsys/$NAME"
+    return $RETVAL
+}
+
+d_restart() {
+    d_stop  > /dev/null 2>&1
+    sleep 1
+    d_start > /dev/null 2>&1
+}
+
+d_reload() {
+    killproc -p /var/run/$NAME.pid "$NAME" -HUP > /dev/null 2>&1
+    RETVAL=$?
+    return $RETVAL
+}
+
+d_status() {
+    status -p /var/run/$NAME.pid "$NAME" > /dev/null 2>&1
+    return $?
+}
+
+case "$1" in
+  start)
+    echo " * Starting $DESC ($NAME)"
+    d_status
+    if [ $? -eq 0 ]
+    then
+      echo "   ...already running."
+    else
+      if d_start
+      then
+        echo "   ...done."
+      else
+        echo "   ...failed."
+        RETVAL=1
+      fi
+    fi
+    ;;
+  stop)
+    echo " * Stopping $DESC ($NAME)"
+    if d_stop
+    then
+      echo "   ...done."
+    else
+      echo "   ...failed."
+      RETVAL=1
+    fi
+    ;;
+  restart)
+    echo " * Restarting $DESC ($NAME)"
+    d_status
+    if [ $? -ne 0 ]
+    then
+      echo "   ...not running."
+      RETVAL=1
+    else
+      if d_restart
+      then
+        echo " * ...done."
+      else
+        echo " * ...failed."
+        RETVAL=1
+      fi
+    fi
+    ;;
+  reload)
+    echo " * Reloading $DESC ($NAME): "
+    d_reload
+    echo "   ...done."
+    ;;
+  status)
+    d_status
+    if [ $? -eq 0 ]
+    then
+      echo " * $DESC ($NAME) is running"
+    else
+      echo " * $DESC ($NAME) is not running"
+    fi
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart|reload|status}"
+    RETVAL=1
+esac
+
+exit $RETVAL
