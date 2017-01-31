@@ -18,6 +18,7 @@
 #     NAME="solr-mysolr" 
 # * rename this script to the NAME used, i.e.
 #     mv solr-xxx solr-mysolr 
+#     chmod +x solr-mysolr
 # * copy this file to /etc/init.d, then run
 #     chkconfig --add solr-mysolr
 # * Install solr ezfind directory in /home/solr/NAME/java, i.e.
@@ -40,6 +41,8 @@
 ###### CUSTOMIZE FROM HERE #####
 
 # Beware CENTOS 7 read the following (systemd)
+# so you MUST replace al 4 "xxx" below with the name choosen in NAME="solr-..." 
+
 
 # chkconfig: 2345 64 36
 # description: SOLR indexing server solr-xxx
@@ -50,8 +53,10 @@
 NAME="solr-xxx"
 
 ###### CUSTOMIZE TO HERE #####
+
 ######
 ###### no need to change anything below this line
+######
 
 DESC="Solr indexing server $NAME"
 # remove first 5 chars (solr-) from NAME
